@@ -30,7 +30,7 @@
 % Use T_c in math mode, or T\textsubscript{c} in text mode
 \newcommand{\Tctext}{T\textsubscript{c}}
 
-\title{\Large \textbf{Advanced Graph Neural Networks for Superconductor Critical Temperature Prediction: A Comprehensive Framework with Physics-Informed Features, Ensemble Methods, and Large-Scale Validation}}
+\title{\Large \textbf{Graph Neural Networks for Superconductor Critical Temperature Prediction: A Framework with Physics-Informed Features, Ensemble Methods, and Large-Scale Validation}}
 
 \author{
 Anonymous Author\\
@@ -46,12 +46,12 @@ University Name\\
 \maketitle
 
 \begin{abstract}
-The discovery of high-temperature superconductors remains one of the most significant challenges in condensed matter physics, with current experimental approaches being prohibitively expensive and time-consuming. We present a comprehensive Graph Neural Network (GNN) framework for predicting superconductor critical temperature ($T_{\text{c}}$) from crystal structure data, achieving state-of-the-art performance with R² = 0.872 and mean absolute error of \SI{8.58}{\kelvin} on a large-scale dataset of 10,000 materials. Our approach introduces six distinct GNN architectures, including enhanced models with residual connections, attention mechanisms, and ensemble methods. We develop a physics-informed feature engineering pipeline incorporating BCS theory-based estimates, electronic structure properties, and compositional descriptors, resulting in 24-dimensional material-level features combined with 20-dimensional atomic node features. The framework employs a physics-aware loss function with range-specific strategies for different \tc regimes, GPU-accelerated training with mixed precision, and comprehensive cross-validation demonstrating robust generalization (R² = \num{0.920} ± \num{0.004} across 5-fold CV). Application to virtual screening of 500 new materials identified 15 promising candidates with predicted \tc > \SI{10}{\kelvin}, including platinum-based intermetallics and rare earth compounds. The complete implementation includes hyperparameter optimization, data augmentation strategies, ensemble methods, and extensive evaluation metrics. Our GPU-accelerated training pipeline enables efficient processing of datasets exceeding 10,000 materials, making it practical for high-throughput virtual screening. This work provides a comprehensive foundation for accelerating superconductor discovery through machine learning-guided materials design, with demonstrated capability to identify novel superconducting candidates for experimental validation.
+The discovery of high-temperature superconductors presents challenges in condensed matter physics, with experimental approaches being expensive and time-consuming. We present a Graph Neural Network (GNN) framework for predicting superconductor critical temperature ($T_{\text{c}}$) from crystal structure data, obtaining R² = 0.872 and mean absolute error of \SI{8.58}{\kelvin} on a dataset of 10,000 materials. Our approach uses six GNN architectures, including models with residual connections, attention mechanisms, and ensemble methods. We implement a feature engineering pipeline incorporating BCS theory-based estimates, electronic structure properties, and compositional descriptors, resulting in 24-dimensional material-level features combined with 20-dimensional atomic node features. The framework uses a loss function with range-specific strategies for different $T_{\text{c}}$ regimes, GPU-accelerated training with mixed precision, and cross-validation showing R² = \num{0.920} ± \num{0.004} across 5-fold CV. Application to virtual screening of 500 new materials identified 15 candidates with predicted $T_{\text{c}} > \SI{10}{\kelvin}$, including platinum-based intermetallics and rare earth compounds. The implementation includes hyperparameter optimization, data augmentation strategies, ensemble methods, and evaluation metrics. The GPU-accelerated training pipeline processes datasets of 10,000 materials. This work presents an approach for superconductor discovery through machine learning-guided materials design.
 \end{abstract}
 
 \section{Introduction}
 
-Superconductivity, the quantum mechanical phenomenon of zero electrical resistance below a critical temperature ($T_{\text{c}}$), represents one of the most remarkable discoveries in condensed matter physics. Since the discovery of superconductivity in mercury at \SI{4.2}{\kelvin} in 1911, the quest for higher critical temperatures has driven decades of research \citep{bednorz1986possible}. The discovery of high-temperature superconductors (HTS) in cuprates and iron-based materials has opened new possibilities for practical applications, yet the fundamental mechanisms remain incompletely understood, and the discovery of new superconducting materials remains largely serendipitous.
+Superconductivity is the quantum mechanical phenomenon of zero electrical resistance below a critical temperature ($T_{\text{c}}$). Since the discovery of superconductivity in mercury at \SI{4.2}{\kelvin} in 1911, the quest for higher critical temperatures has driven decades of research \citep{bednorz1986possible}. The discovery of high-temperature superconductors (HTS) in cuprates and iron-based materials has opened new possibilities for practical applications, yet the fundamental mechanisms remain incompletely understood, and the discovery of new superconducting materials remains largely serendipitous.
 
 The traditional approach to superconductor discovery relies on experimental synthesis and characterization, a process that is both time-consuming (months to years per material) and expensive (thousands to millions of dollars per compound). With the vast chemical space of potential materials—estimated at $10^{60}$ possible compositions—systematic experimental exploration is infeasible. Computational methods have emerged as essential tools for accelerating materials discovery, with machine learning approaches showing particular promise for property prediction \citep{curtarolo2013aflow}.
 
@@ -64,7 +64,7 @@ The prediction of superconducting critical temperature presents several unique a
     
     \item \textbf{Sparse and biased data}: Experimental $T_{\text{c}}$ measurements are limited, with most known superconductors having $T_{\text{c}} < \SI{50}{\kelvin}$. High-temperature superconductors ($T_{\text{c}} > \SI{77}{\kelvin}$, liquid nitrogen temperature) are particularly rare, creating a severe class imbalance in training data.
     
-    \item \textbf{Feature representation}: Effective prediction requires capturing both local atomic environments (coordination, bonding) and global structural motifs (symmetry, topology), necessitating sophisticated graph representations.
+    \item \textbf{Feature representation}: Prediction requires capturing both local atomic environments (coordination, bonding) and global structural motifs (symmetry, topology), requiring graph representations.
     
     \item \textbf{Computational efficiency}: Large-scale virtual screening requires processing thousands to millions of candidate materials, demanding efficient training and inference pipelines.
     
@@ -73,35 +73,35 @@ The prediction of superconducting critical temperature presents several unique a
 
 \subsection{Contributions}
 
-This work addresses these challenges through a comprehensive framework with several key innovations:
+This work addresses these challenges through the following approaches:
 
 \begin{enumerate}
-    \item \textbf{Multiple GNN Architectures}: We develop and compare six distinct GNN architectures—from basic 3-layer models to advanced attention-based and ensemble architectures—enabling systematic evaluation of architectural choices.
+    \item \textbf{Multiple GNN Architectures}: Six GNN architectures are implemented and compared, ranging from basic 3-layer models to attention-based and ensemble architectures.
     
-    \item \textbf{Physics-Informed Feature Engineering}: A comprehensive 24-dimensional feature set incorporating BCS theory-based $T_{\text{c}}$ estimates, electronic structure indicators (density of states, coupling strength), phononic properties (Debye temperature), compositional superconductivity scores, and structural descriptors.
+    \item \textbf{Feature Engineering}: A 24-dimensional feature set incorporating BCS theory-based $T_{\text{c}}$ estimates, electronic structure indicators (density of states, coupling strength), phononic properties (Debye temperature), compositional superconductivity scores, and structural descriptors.
     
-    \item \textbf{Physics-Aware Loss Function}: Range-specific loss strategies for different $T_{\text{c}}$ regimes, with physics constraints preventing unphysical predictions and ranking loss preserving relative ordering.
+    \item \textbf{Loss Function}: Range-specific loss strategies for different $T_{\text{c}}$ regimes, with constraints to prevent unphysical predictions and ranking loss to preserve relative ordering.
     
-    \item \textbf{Large-Scale Validation}: Training and evaluation on 10,000 materials from the Materials Project database, with comprehensive cross-validation (5-fold, stratified, multiple splits) demonstrating robust generalization.
+    \item \textbf{Validation}: Training and evaluation on 10,000 materials from the Materials Project database, with cross-validation (5-fold, stratified, multiple splits).
     
-    \item \textbf{GPU-Accelerated Pipeline}: Optimized training infrastructure with mixed precision, memory management, and efficient batching, enabling practical large-scale processing.
+    \item \textbf{GPU-Accelerated Pipeline}: Training infrastructure with mixed precision, memory management, and batching for large-scale processing.
     
-    \item \textbf{Material Discovery Application}: Virtual screening pipeline identifying 15 promising candidates with predicted $T_{\text{c}} > \SI{10}{\kelvin}$, demonstrating practical utility for materials discovery.
+    \item \textbf{Material Discovery Application}: Virtual screening pipeline identifying 15 candidates with predicted $T_{\text{c}} > \SI{10}{\kelvin}$.
     
-    \item \textbf{Comprehensive Evaluation}: Extensive metrics including performance by $T_{\text{c}}$ range, error analysis, physics compliance checks, and statistical significance testing.
+    \item \textbf{Evaluation}: Metrics including performance by $T_{\text{c}}$ range, error analysis, and statistical testing.
 \end{enumerate}
 
 \section{Related Work}
 
 \subsection{Graph Neural Networks for Materials}
 
-Graph Neural Networks have emerged as powerful tools for materials property prediction by naturally representing crystal structures as graphs, where atoms are nodes and bonds are edges \citep{xie2018crystal}. The Crystal Graph Convolutional Neural Network (CGCNN) demonstrated that atomic environments can be effectively learned from crystal graphs without manual feature engineering \citep{xie2018crystal}. Subsequent work has extended this approach to various material properties, including formation energy, band gaps, and elastic properties \citep{chen2019graph, park2017developing}.
+Graph Neural Networks have been used for materials property prediction by representing crystal structures as graphs, where atoms are nodes and bonds are edges \citep{xie2018crystal}. The Crystal Graph Convolutional Neural Network (CGCNN) showed that atomic environments can be learned from crystal graphs without manual feature engineering \citep{xie2018crystal}. Subsequent work has extended this approach to various material properties, including formation energy, band gaps, and elastic properties \citep{chen2019graph, park2017developing}.
 
-Recent advances have incorporated attention mechanisms \citep{velickovic2017graph}, edge features \citep{schutt2017quantum}, and multi-scale representations \citep{deudon2020learning}. However, most applications have focused on small to medium-scale datasets, with limited exploration of large-scale training and comprehensive validation.
+Recent work has incorporated attention mechanisms \citep{velickovic2017graph}, edge features \citep{schutt2017quantum}, and multi-scale representations \citep{deudon2020learning}. However, most applications have focused on small to medium-scale datasets, with limited exploration of large-scale training and validation.
 
 \subsection{Superconductor Prediction}
 
-Early machine learning approaches to superconductor prediction focused on feature-based methods using descriptors derived from composition and structure \citep{stanev2018machine}. These methods achieved moderate success but were limited by manual feature engineering and small datasets. More recently, deep learning methods have been applied, with varying success \citep{hamidieh2018data}. However, most approaches have been limited by:
+Early machine learning approaches to superconductor prediction used feature-based methods with descriptors derived from composition and structure \citep{stanev2018machine}. These methods were limited by manual feature engineering and small datasets. More recently, deep learning methods have been applied \citep{hamidieh2018data}. However, most approaches have been limited by:
 
 \begin{itemize}
     \item Small datasets (typically < 1,000 materials)
@@ -112,7 +112,7 @@ Early machine learning approaches to superconductor prediction focused on featur
 
 \subsection{Ensemble Methods and Uncertainty Quantification}
 
-Ensemble methods have shown promise for improving prediction accuracy and providing uncertainty estimates in materials property prediction \citep{ward2016general}. The combination of multiple models can capture different aspects of the structure-property relationship, leading to more robust predictions. However, systematic evaluation of ensemble methods for superconductor prediction has been limited.
+Ensemble methods have been used for improving prediction accuracy and providing uncertainty estimates in materials property prediction \citep{ward2016general}. The combination of multiple models can capture different aspects of the structure-property relationship. However, systematic evaluation of ensemble methods for superconductor prediction has been limited.
 
 \section{Methods}
 
@@ -120,7 +120,7 @@ Ensemble methods have shown promise for improving prediction accuracy and provid
 
 \subsubsection{Data Sources}
 
-We utilize the Materials Project database \citep{jain2013commentary}, a comprehensive repository of computed material properties from density functional theory (DFT) calculations. Our dataset includes:
+We use the Materials Project database \citep{jain2013commentary}, a repository of computed material properties from density functional theory (DFT) calculations. Our dataset includes:
 
 \begin{itemize}
     \item \textbf{Total structures available}: 36,139 CIF files
@@ -213,7 +213,7 @@ A crystal structure is represented as a graph $G = (V, E)$ where:
 
 \subsubsection{Node Features (20 dimensions)}
 
-Each atom is represented by a comprehensive feature vector:
+Each atom is represented by a feature vector:
 
 \begin{itemize}
     \item \textbf{Atomic properties}: Atomic number, period, group
@@ -238,7 +238,7 @@ Bond features capture interatomic interactions:
 
 \subsection{Material-Level Features}
 
-In addition to graph features, we incorporate comprehensive material-level descriptors (24 dimensions):
+In addition to graph features, we incorporate material-level descriptors (24 dimensions):
 
 \subsubsection{Electronic Structure Features}
 \begin{itemize}
@@ -296,7 +296,7 @@ A foundational 3-layer Graph Convolutional Network:
 
 \subsubsection{2. EnhancedCrystalTcGNN}
 
-An improved architecture with advanced components:
+An architecture with additional components:
 
 \begin{itemize}
     \item 4 GCN layers with hidden dimension 128
@@ -342,7 +342,7 @@ Ensemble of multiple architectures with learnable weights:
 
 \subsubsection{6. SuperEnhancedCrystalTcGNN}
 
-Advanced architecture with edge convolutions:
+Architecture with edge convolutions:
 
 \begin{itemize}
     \item Edge convolution layers
@@ -410,7 +410,7 @@ Preserves relative ordering of $T_{\text{c}}$ values:
     \item \textbf{Primary split}: 70\% train, 15\% validation, 15\% test
     \item \textbf{Alternative splits}: 60/20/20, 80/10/10, 85/10/5
     \item \textbf{Stratification}: Ensures representative distribution across $T_{\text{c}}$ ranges
-    \item \textbf{Cross-validation}: 5-fold CV for robust evaluation
+    \item \textbf{Cross-validation}: 5-fold CV for evaluation
 \end{itemize}
 
 \subsubsection{GPU Acceleration}
@@ -453,7 +453,7 @@ To address data sparsity, we employ physics-aware augmentation:
 
 \subsection{Large-Scale Training Results}
 
-Training on 10,000 materials with the EnhancedCrystalTcGNN architecture (646,145 parameters, hidden dimension 256) achieved exceptional performance:
+Training on 10,000 materials with the EnhancedCrystalTcGNN architecture (646,145 parameters, hidden dimension 256) produced the following results:
 
 \begin{table}[H]
 \centering
@@ -463,21 +463,21 @@ Training on 10,000 materials with the EnhancedCrystalTcGNN architecture (646,145
 \textbf{Metric} & \textbf{Value} & \textbf{Unit} & \textbf{Notes} \\
 \midrule
 R² Score & 0.872 & - & 87.2\% variance explained \\
-Mean Absolute Error (MAE) & 8.58 & \si{\kelvin} & Excellent for 0--210K range \\
+Mean Absolute Error (MAE) & 8.58 & \si{\kelvin} & For 0--210K range \\
 Root Mean Square Error (RMSE) & 18.99 & \si{\kelvin} & \\
-Model Parameters & 646,145 & - & Large capacity model \\
+Model Parameters & 646,145 & - & \\
 Training Time & 45--60 & \si{\minute} & GPU (RTX A1000) \\
-Batch Size & 32 & - & GPU-optimized \\
-Learning Rate & 0.0005 & - & Optimized \\
+Batch Size & 32 & - & \\
+Learning Rate & 0.0005 & - & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The model demonstrates strong predictive capability with R² = 0.872, indicating that 87.2\% of the variance in critical temperature is captured. The mean absolute error of \SI{8.58}{\kelvin} is excellent considering the wide range of $T_{\text{c}}$ values (0--\SI{210}{\kelvin}).
+The model shows R² = 0.872, indicating that 87.2\% of the variance in critical temperature is captured. The mean absolute error is \SI{8.58}{\kelvin} for $T_{\text{c}}$ values ranging from 0 to \SI{210}{\kelvin}.
 
 \subsection{Cross-Validation Results}
 
-Comprehensive cross-validation analysis demonstrates robust performance across different data splits:
+Cross-validation results across different data splits are shown below:
 
 \begin{table}[H]
 \centering
@@ -494,7 +494,7 @@ Random Seed Stability & \num{0.931} ± \num{0.002} & \num{8.31} ± \num{0.47} & 
 \end{tabular}
 \end{table}
 
-The cross-validation results show consistent performance across different data splits, with R² scores consistently above 0.91. The low standard deviations indicate model stability and robustness. The coefficient of variation for R² across random seeds is only 0.25\%, demonstrating excellent reproducibility.
+The cross-validation results show R² scores above 0.91 across different data splits. The standard deviations are low, and the coefficient of variation for R² across random seeds is 0.25\%.
 
 \subsection{Performance by Critical Temperature Range}
 
@@ -514,7 +514,7 @@ High $T_{\text{c}}$ (> \SI{50}{\kelvin}) & 0.90--0.95 & 10--15 & 912 (26.0\%) \\
 \end{tabular}
 \end{table}
 
-The model performs well across all $T_{\text{c}}$ ranges, with particularly strong performance for high-temperature superconductors (R² > 0.90), which is crucial for identifying promising candidates for practical applications.
+The model shows performance across all $T_{\text{c}}$ ranges, with R² > 0.90 for high-temperature superconductors.
 
 \subsection{Architecture Comparison}
 
@@ -537,11 +537,11 @@ SuperEnhancedCrystalTcGNN & 0.87--0.89 & 8--10 & 300,000+ \\
 \end{tabular}
 \end{table}
 
-The EnhancedCrystalTcGNN provides the best balance of performance and efficiency, achieving R² = 0.872 with reasonable computational cost.
+The EnhancedCrystalTcGNN shows R² = 0.872 with reasonable computational cost.
 
 \subsection{Material Discovery Results}
 
-The trained model was applied to screen 500 new materials not in the training set, identifying promising candidates for experimental validation:
+The trained model was applied to screen 500 new materials not in the training set:
 
 \begin{table}[H]
 \centering
@@ -568,7 +568,7 @@ The trained model was applied to screen 500 new materials not in the training se
 
 \begin{itemize}
     \item \textbf{Materials screened}: 500
-    \item \textbf{Successful predictions}: 73 (14.6\% success rate)
+    \item \textbf{Predictions obtained}: 73 (14.6\% of materials)
     \item \textbf{High $T_{\text{c}}$ candidates (> \SI{10}{\kelvin})}: 15 materials
     \item \textbf{Highest predicted $T_{\text{c}}$}: \SI{19.54}{\kelvin} (Iridium)
     \item \textbf{Mean predicted $T_{\text{c}}$}: \SI{4.80}{\kelvin}
@@ -577,7 +577,7 @@ The trained model was applied to screen 500 new materials not in the training se
 
 \subsubsection{Scientific Insights}
 
-The discovery results reveal several important patterns:
+The results show the following patterns:
 
 \begin{enumerate}
     \item \textbf{Platinum-based compounds}: Multiple platinum intermetallics (HgPt$_3$, HfPt, LaPt) appear in the top candidates, consistent with known superconductor chemistry.
@@ -606,11 +606,11 @@ GPU (RTX A1000, 4GB) & 45--60 minutes & 10--100x (batch ops) \\
 \end{tabular}
 \end{table}
 
-Training on 10,000 materials with 60 epochs completes in approximately 45--60 minutes on an NVIDIA RTX A1000 GPU. The GPU acceleration enables practical training on large datasets, with batch processing providing 10--100x speedup for matrix operations compared to CPU implementations.
+Training on 10,000 materials with 60 epochs takes approximately 45--60 minutes on an NVIDIA RTX A1000 GPU. Batch processing provides speedup for matrix operations compared to CPU implementations.
 
 \subsection{Feature Importance Analysis}
 
-Analysis reveals that both graph-based and material-level features contribute significantly:
+Analysis indicates that both graph-based and material-level features contribute:
 
 \begin{itemize}
     \item \textbf{Graph features}: Atomic coordination, bond distances, and local environments are crucial for capturing crystal structure effects (estimated 60\% contribution).
@@ -636,7 +636,7 @@ The GNN architecture provides interpretability through:
 
 \subsection{Comparison with Previous Work}
 
-Our approach achieves significant improvements over previous methods:
+Results are compared with previous methods:
 
 \begin{table}[H]
 \centering
@@ -655,7 +655,7 @@ This work (CV) & 10,000 & 0.920 ± 0.004 & 9.43 ± 0.64 \\
 
 \subsection{Limitations and Future Work}
 
-While our approach demonstrates strong performance, several limitations warrant discussion:
+Several limitations are noted:
 
 \begin{itemize}
     \item \textbf{Data quality}: Dependence on Materials Project data accuracy and synthetic labeling for materials without experimental $T_{\text{c}}$ measurements.
@@ -670,8 +670,8 @@ While our approach demonstrates strong performance, several limitations warrant 
 \subsubsection{Future Directions}
 
 \begin{itemize}
-    \item Integration with advanced structure prediction methods for enhanced structural features
-    \item Extension to multi-property prediction for comprehensive material characterization
+    \item Integration with structure prediction methods for structural features
+    \item Extension to multi-property prediction for material characterization
     \item Active learning frameworks for efficient experimental validation
     \item Interpretability analysis for mechanistic understanding
     \item Integration with experimental databases for continuous model improvement
@@ -679,13 +679,11 @@ While our approach demonstrates strong performance, several limitations warrant 
 
 \section{Conclusion}
 
-We present a comprehensive Graph Neural Network framework for predicting superconductor critical temperature from crystal structure data, achieving state-of-the-art performance with R² = 0.872 and MAE = \SI{8.58}{\kelvin} on a large-scale dataset of 10,000 materials. Our approach integrates atomic-level graph representations with material-level features, employing ensemble methods and GPU acceleration for robust and efficient predictions.
+We present a Graph Neural Network framework for predicting superconductor critical temperature from crystal structure data, obtaining R² = 0.872 and MAE = \SI{8.58}{\kelvin} on a dataset of 10,000 materials. The approach uses atomic-level graph representations with material-level features, ensemble methods, and GPU acceleration.
 
-Key contributions include: (1) six distinct GNN architectures enabling systematic evaluation, (2) physics-informed feature engineering incorporating BCS theory and electronic structure properties, (3) physics-aware loss function with range-specific strategies, (4) comprehensive cross-validation demonstrating robust generalization (R² = \num{0.920} ± \num{0.004}), (5) GPU-accelerated training pipeline enabling large-scale processing, and (6) material discovery application identifying 15 promising candidates with predicted $T_{\text{c}} > \SI{10}{\kelvin}$.
+The work includes: (1) six GNN architectures, (2) feature engineering incorporating BCS theory and electronic structure properties, (3) loss function with range-specific strategies, (4) cross-validation showing R² = \num{0.920} ± \num{0.004}, (5) GPU-accelerated training pipeline, and (6) material discovery application identifying 15 candidates with predicted $T_{\text{c}} > \SI{10}{\kelvin}$.
 
-The demonstrated performance improvements and practical material discovery results highlight the significant potential for accelerating superconductor discovery through machine learning-guided virtual screening. With comprehensive validation, robust generalization, and practical utility demonstrated, this work provides a solid foundation for both academic research and industrial applications in computational materials discovery.
-
-Our open-source implementation, comprehensive documentation, and reproducible results provide a foundation for advancing the field of AI-driven superconductor discovery, with the ultimate goal of identifying new high-temperature superconductors for practical applications.
+The results suggest potential applications for superconductor discovery through machine learning-guided virtual screening. The implementation and results are available for further development.
 
 \section*{Acknowledgments}
 
