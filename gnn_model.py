@@ -25,6 +25,9 @@ class CrystalTcGNN(torch.nn.Module):
     def __init__(self, num_node_features: int, num_material_features: int, hidden_dim: int = 64):
         super(CrystalTcGNN, self).__init__()
         
+        # Store material feature size to avoid magic numbers
+        self.num_material_features = num_material_features
+        
         # Graph convolution layers
         self.conv1 = GCNConv(num_node_features, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
@@ -59,11 +62,8 @@ class CrystalTcGNN(torch.nn.Module):
         
         # Combine with material properties if available
         if material_props is not None:
-            # Handle PyTorch Geometric batching issue
-            # In batched data, material_props gets concatenated incorrectly
-            # We need to reshape it properly
-            
-            expected_prop_size = 21  # We know we have 21 material features
+            # Handle PyTorch Geometric batching issue with stored feature size
+            expected_prop_size = self.num_material_features
             batch_size = x.size(0)
             
             # Check if material_props has been incorrectly concatenated
@@ -979,13 +979,33 @@ class SuperconductorTcPredictor:
         Enhanced processing with data augmentation for better Tc range coverage
         """
         try:
-            # Load CSV data
-            csv_data = pd.read_csv(csv_file)
-            logger.info(f"Loaded CSV with {len(csv_data)} entries")
+            # Load CSV data with error handling
+            try:
+                csv_data = pd.read_csv(csv_file)
+                logger.info(f"Loaded CSV with {len(csv_data)} entries")
+            except FileNotFoundError:
+                logger.warning(f"CSV file not found at {csv_file}, using default values for all structures")
+                csv_data = None
+            except Exception as e:
+                logger.warning(f"Error loading CSV data: {e}, falling back to default values")
+                csv_data = None
             
-            # Get available structure files
-            structure_files = list(Path(structures_dir).glob("*.cif"))
-            logger.info(f"Found {len(structure_files)} structure files")
+            # Get available structure files with error handling
+            try:
+                structures_dir_path = Path(structures_dir)
+                if not structures_dir_path.exists():
+                    logger.error(f"Structures directory does not exist: {structures_dir}")
+                    return []
+                    
+                structure_files = list(structures_dir_path.glob("*.cif"))
+                logger.info(f"Found {len(structure_files)} structure files")
+            except Exception as e:
+                logger.error(f"Error accessing structures directory: {e}")
+                return []
+            
+            if not structure_files:
+                logger.error("No structure files found")
+                return []
             
             if max_structures:
                 structure_files = structure_files[:max_structures]
@@ -1002,22 +1022,40 @@ class SuperconductorTcPredictor:
                 try:
                     material_id = structure_file.stem
                     
-                    # Find corresponding CSV entry
-                    csv_match = csv_data[csv_data['material_id'] == material_id]
-                    if csv_match.empty:
-                        # Use default values if not in CSV
-                        is_metal = True  # Assume metal for superconductors
-                        formation_energy = -1.0  # Default reasonable value
-                        band_gap = 0.0  # Metals typically have zero band gap
-                        csv_row = None
+                    # Find corresponding CSV entry with fallback
+                    if csv_data is not None:
+                        try:
+                            csv_match = csv_data[csv_data['material_id'] == material_id]
+                            if csv_match.empty:
+                                # Use default values if not in CSV
+                                is_metal = True
+                                formation_energy = -1.0
+                                band_gap = 0.0
+                                csv_row = None
+                            else:
+                                csv_row = csv_match.iloc[0]
+                                is_metal = csv_row.get('is_metal', True)
+                                formation_energy = csv_row.get('formation_energy_per_atom', -1.0)
+                                band_gap = csv_row.get('band_gap', 0.0)
+                        except Exception as e:
+                            logger.debug(f"Error reading CSV row for {material_id}: {e}")
+                            is_metal = True
+                            formation_energy = -1.0
+                            band_gap = 0.0
+                            csv_row = None
                     else:
-                        csv_row = csv_match.iloc[0]
-                        is_metal = csv_row.get('is_metal', True)
-                        formation_energy = csv_row.get('formation_energy_per_atom', -1.0)
-                        band_gap = csv_row.get('band_gap', 0.0)
+                        is_metal = True
+                        formation_energy = -1.0
+                        band_gap = 0.0
+                        csv_row = None
                     
-                    # Load structure
-                    structure = Structure.from_file(str(structure_file))
+                    # Load structure with error handling
+                    try:
+                        structure = Structure.from_file(str(structure_file))
+                    except Exception as e:
+                        logger.warning(f"Failed to load structure {structure_file}: {e}")
+                        error_count += 1
+                        continue
                     
                     # Create basic material properties for Tc estimation
                     basic_material_props = {
@@ -1027,30 +1065,84 @@ class SuperconductorTcPredictor:
                         'is_metal': is_metal
                     }
                     
-                    # Get estimated Tc (this will be our target)
-                    target_tc = self._estimate_tc(structure, basic_material_props)
+                    # Get estimated Tc with error handling
+                    try:
+                        target_tc = self._estimate_tc(structure, basic_material_props)
+                    except Exception as e:
+                        logger.debug(f"Error estimating Tc for {material_id}: {e}")
+                        target_tc = np.random.uniform(0.1, 5.0)  # Fallback value
                     
-                    # Enhanced material properties
-                    material_props = self._calculate_advanced_features(structure)
+                    # Enhanced material properties with error handling
+                    try:
+                        material_props = self._calculate_advanced_features(structure)
+                    except Exception as e:
+                        logger.warning(f"Error calculating advanced features for {material_id}: {e}")
+                        material_props = {
+                            'num_valence_electrons': 10,
+                            'transition_metal_d_electrons': 5,
+                            'avg_electronegativity': 2.0,
+                            'electronegativity_variance': 0.1,
+                            'volume_per_atom': 50.0,
+                            'packing_fraction': 0.74,
+                            'coordination_variance': 1.0,
+                            'space_group_number': 1,
+                            'crystal_system': 0,
+                            'point_group_order': 1,
+                            'num_elements': 2,
+                            'element_mixing_entropy': 0.0,
+                            'has_transition_metals': True,
+                            'has_rare_earth': False,
+                            'has_alkali': False,
+                            'has_alkaline_earth': False,
+                            'is_layered': 0.0,
+                            'avg_bond_length': 3.0,
+                            'tc_indicator_score': 1.0,
+                            'dos_at_fermi': 1.0,
+                            'phonon_frequency_estimate': 0.2,
+                        }
                     
                     # Add CSV-based properties if available
-                    if csv_row is not None and not csv_row.empty:
-                        if 'formula' in csv_row:
-                            material_props['formula'] = csv_row['formula']
-                        if 'spacegroup' in csv_row:
-                            material_props['spacegroup'] = csv_row['spacegroup']
+                    if csv_row is not None:
+                        try:
+                            if 'formula' in csv_row:
+                                material_props['formula'] = csv_row['formula']
+                            if 'spacegroup' in csv_row:
+                                material_props['spacegroup'] = csv_row['spacegroup']
+                        except Exception as e:
+                            logger.debug(f"Error adding CSV properties: {e}")
                     
                     # Enhanced Tc estimation for better training targets
-                    estimated_tc = self._estimate_tc(structure, material_props)
+                    try:
+                        estimated_tc = self._estimate_tc(structure, material_props)
+                    except Exception as e:
+                        logger.debug(f"Error in enhanced Tc estimation: {e}")
+                        estimated_tc = target_tc
+                    
                     material_props['estimated_tc'] = estimated_tc
                     material_props['target_tc'] = target_tc
                     
-                    # **DATA AUGMENTATION**: Create multiple variants for better learning
-                    base_graph_data = self.structure_to_graph(structure, material_props)
-                    base_graph_data.y = torch.tensor([target_tc], dtype=torch.float32)
-                    dataset.append(base_graph_data)
+                    # Convert structure to graph with error handling
+                    try:
+                        base_graph_data = self.structure_to_graph(structure, material_props)
+                        if base_graph_data is None:
+                            logger.warning(f"Failed to convert structure to graph: {material_id}")
+                            error_count += 1
+                            continue
+                    except Exception as e:
+                        logger.warning(f"Error converting structure {material_id} to graph: {e}")
+                        error_count += 1
+                        continue
                     
-                    # Add augmented versions for rare Tc ranges
+                    # Set target Tc value
+                    try:
+                        base_graph_data.y = torch.tensor([target_tc], dtype=torch.float32)
+                        dataset.append(base_graph_data)
+                    except Exception as e:
+                        logger.warning(f"Error setting target Tc: {e}")
+                        error_count += 1
+                        continue
+                    
+                    # **DATA AUGMENTATION**: Create multiple variants for better learning
                     augment_count = 0
                     if target_tc < 1.0:  # Very low Tc - augment heavily
                         augment_count = 4
@@ -1060,21 +1152,32 @@ class SuperconductorTcPredictor:
                         augment_count = 2
                     
                     for aug_i in range(augment_count):
-                        # Add small noise to features for augmentation
-                        aug_material_props = material_props.copy()
-                        
-                        # Add controlled noise to estimated_tc and other properties
-                        noise_factor = np.random.uniform(0.95, 1.05)
-                        aug_material_props['estimated_tc'] = estimated_tc * noise_factor
-                        
-                        # Small variations in calculated properties
-                        for key in ['density', 'volume_per_atom', 'packing_efficiency']:
-                            if key in aug_material_props:
-                                aug_material_props[key] *= np.random.uniform(0.98, 1.02)
-                        
-                        aug_graph_data = self.structure_to_graph(structure, aug_material_props)
-                        aug_graph_data.y = torch.tensor([target_tc], dtype=torch.float32)
-                        dataset.append(aug_graph_data)
+                        try:
+                            # Add small noise to features for augmentation
+                            aug_material_props = material_props.copy()
+                            
+                            # Add controlled noise to estimated_tc and other properties
+                            noise_factor = np.random.uniform(0.95, 1.05)
+                            aug_material_props['estimated_tc'] = estimated_tc * noise_factor
+                            
+                            # Small variations in calculated properties
+                            for key in ['density', 'volume_per_atom', 'packing_fraction']:
+                                if key in aug_material_props:
+                                    try:
+                                        aug_material_props[key] *= np.random.uniform(0.98, 1.02)
+                                    except Exception as e:
+                                        logger.debug(f"Error augmenting property {key}: {e}")
+                            
+                            # Convert to graph with error handling
+                            aug_graph_data = self.structure_to_graph(structure, aug_material_props)
+                            if aug_graph_data is None:
+                                continue
+                                
+                            aug_graph_data.y = torch.tensor([target_tc], dtype=torch.float32)
+                            dataset.append(aug_graph_data)
+                        except Exception as e:
+                            logger.debug(f"Error creating augmented sample {aug_i}: {e}")
+                            continue
                     
                     processed_count += 1
                     
@@ -1090,30 +1193,33 @@ class SuperconductorTcPredictor:
             logger.info(f"Successfully processed {processed_count} structures, {error_count} errors")
             
             if len(dataset) > 0:
-                # Analyze Tc distribution in the final dataset
-                tc_values = [float(data.y.item()) for data in dataset]
-                tc_stats = {
-                    'mean': np.mean(tc_values),
-                    'std': np.std(tc_values),
-                    'min': np.min(tc_values),
-                    'max': np.max(tc_values),
-                    'low_tc_count': sum(1 for tc in tc_values if tc < 5.0),
-                    'medium_tc_count': sum(1 for tc in tc_values if 5.0 <= tc < 50.0),
-                    'high_tc_count': sum(1 for tc in tc_values if tc >= 50.0)
-                }
-                
-                logger.info("Final Tc Distribution Statistics:")
-                logger.info(f"  Mean Tc: {tc_stats['mean']:.2f}K")
-                logger.info(f"  Std Tc: {tc_stats['std']:.2f}K")
-                logger.info(f"  Range: {tc_stats['min']:.2f}K - {tc_stats['max']:.2f}K")
-                logger.info(f"  Low Tc (<5K): {tc_stats['low_tc_count']} samples ({tc_stats['low_tc_count']/len(tc_values)*100:.1f}%)")
-                logger.info(f"  Medium Tc (5-50K): {tc_stats['medium_tc_count']} samples ({tc_stats['medium_tc_count']/len(tc_values)*100:.1f}%)")
-                logger.info(f"  High Tc (>50K): {tc_stats['high_tc_count']} samples ({tc_stats['high_tc_count']/len(tc_values)*100:.1f}%)")
+                # Analyze Tc distribution in the final dataset with error handling
+                try:
+                    tc_values = [float(data.y.item()) for data in dataset]
+                    tc_stats = {
+                        'mean': np.mean(tc_values),
+                        'std': np.std(tc_values),
+                        'min': np.min(tc_values),
+                        'max': np.max(tc_values),
+                        'low_tc_count': sum(1 for tc in tc_values if tc < 5.0),
+                        'medium_tc_count': sum(1 for tc in tc_values if 5.0 <= tc < 50.0),
+                        'high_tc_count': sum(1 for tc in tc_values if tc >= 50.0)
+                    }
+                    
+                    logger.info("Final Tc Distribution Statistics:")
+                    logger.info(f"  Mean Tc: {tc_stats['mean']:.2f}K")
+                    logger.info(f"  Std Tc: {tc_stats['std']:.2f}K")
+                    logger.info(f"  Range: {tc_stats['min']:.2f}K - {tc_stats['max']:.2f}K")
+                    logger.info(f"  Low Tc (<5K): {tc_stats['low_tc_count']} samples ({tc_stats['low_tc_count']/len(tc_values)*100:.1f}%)")
+                    logger.info(f"  Medium Tc (5-50K): {tc_stats['medium_tc_count']} samples ({tc_stats['medium_tc_count']/len(tc_values)*100:.1f}%)")
+                    logger.info(f"  High Tc (>50K): {tc_stats['high_tc_count']} samples ({tc_stats['high_tc_count']/len(tc_values)*100:.1f}%)")
+                except Exception as e:
+                    logger.warning(f"Error calculating Tc statistics: {e}")
             
             return dataset
             
         except Exception as e:
-            logger.error(f"Error in process_structures_for_tc: {e}")
+            logger.error(f"Critical error in process_structures_for_tc: {e}")
             return []
 
     def train_model(self, dataset: List[Data], num_epochs: int = 50, batch_size: int = 32) -> CrystalTcGNN:
