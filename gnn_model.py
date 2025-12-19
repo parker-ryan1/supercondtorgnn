@@ -24,6 +24,40 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ============================================================================
+# CONSTANTS - Material Properties & Physics Parameters
+# ============================================================================
+# Default material properties dictionary (used as fallback)
+DEFAULT_MATERIAL_PROPS: Dict[str, any] = {
+    'num_valence_electrons': 10,
+    'transition_metal_d_electrons': 5,
+    'avg_electronegativity': 2.0,
+    'electronegativity_variance': 0.1,
+    'volume_per_atom': 50.0,
+    'packing_fraction': 0.74,
+    'coordination_variance': 1.0,
+    'space_group_number': 1,
+    'crystal_system': 0,
+    'point_group_order': 1,
+    'num_elements': 2,
+    'element_mixing_entropy': 0.0,
+    'has_transition_metals': True,
+    'has_rare_earth': False,
+    'has_alkali': False,
+    'has_alkaline_earth': False,
+    'is_layered': 0.0,
+    'avg_bond_length': 3.0,
+    'tc_indicator_score': 1.0,
+    'dos_at_fermi': 1.0,
+    'phonon_frequency_estimate': 0.2,
+}
+
+# Edge detection parameters
+CUTOFF_DISTANCES: List[float] = [3.5, 5.0, 7.0, 10.0]
+MAX_EDGE_FEATURE_DISTANCE: float = 8.0
+SHORT_BOND_THRESHOLD: float = 3.0
+DEFAULT_EDGE_FEAT: List[float] = [3.0, 0.375, 0.0, 0.0, 1.0, 0.05]
+
+# ============================================================================
 # CACHING UTILITIES - For expensive computations
 # ============================================================================
 class CacheManager:
@@ -907,7 +941,8 @@ class SuperconductorTcPredictor:
                 
                 features['structural_tc_score'] = structure_score
                 
-            except:
+            except Exception as e:
+                logger.debug(f"Failed to calculate structural Tc score: {e}")
                 features['structural_tc_score'] = 0.8
             
             # 6. Compositional Tc score based on known superconductors
@@ -1587,7 +1622,7 @@ class SuperconductorTcPredictor:
         try:
             model.load_state_dict(torch.load('models/best_tc_model.pt'))
             logger.info("Loaded best Tc model")
-        except:
+        except FileNotFoundError:
             logger.warning("Could not load best Tc model, using current state")
         
         if self.device == 'cuda':
@@ -1653,7 +1688,8 @@ class SuperconductorTcPredictor:
                 crystal_system = spacegroup_analyzer.get_crystal_system()
                 features['crystal_system'] = self._encode_crystal_system(crystal_system)
                 features['point_group_order'] = len(spacegroup_analyzer.get_point_group_operations())
-            except:
+            except Exception as e:
+                logger.debug(f"Failed to calculate symmetry features: {e}")
                 features['space_group_number'] = 1
                 features['crystal_system'] = 0
                 features['point_group_order'] = 1
@@ -1850,7 +1886,8 @@ class SuperconductorTcPredictor:
                     loss = criterion(out.squeeze(), batch.y.squeeze())
                     loss.backward()
                     optimizer.step()
-                except:
+                except Exception as e:
+                    logger.debug(f"Skipped training batch due to: {e}")
                     continue
             
             # Validation
@@ -1870,7 +1907,8 @@ class SuperconductorTcPredictor:
                         loss = criterion(out.squeeze(), batch.y.squeeze())
                         val_loss += loss.item()
                         val_batches += 1
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Skipped validation batch due to: {e}")
                         continue
             
             if val_batches > 0:
@@ -1987,7 +2025,8 @@ class SuperconductorTcPredictor:
                         
                         predictions.extend(out.squeeze().cpu().numpy())
                         targets.extend(batch.y.squeeze().cpu().numpy())
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Skipped batch in cross-validation: {e}")
                         continue
             
             if val_batches == 0:
@@ -2025,7 +2064,7 @@ class SuperconductorTcPredictor:
         try:
             model.load_state_dict(torch.load('models/best_ensemble_tc_model.pt'))
             logger.info("Loaded best ensemble model")
-        except:
+        except FileNotFoundError:
             logger.warning("Could not load best ensemble model")
         
         return model
@@ -2063,7 +2102,8 @@ class SuperconductorTcPredictor:
                     out = model(batch.x, batch.edge_index, batch.batch, material_props_batch)
                     predictions.extend(out.squeeze().cpu().numpy())
                     targets.extend(batch.y.squeeze().cpu().numpy())
-                except:
+                except Exception as e:
+                    logger.debug(f"Skipped test batch due to: {e}")
                     continue
         
         if len(predictions) > 1:
@@ -2581,7 +2621,8 @@ class SuperEnhancedCrystalTcGNN(torch.nn.Module):
         # Pathway 2: Attention-based features with edge features
         try:
             x_att1 = self.gat1(x, edge_index, edge_attr=edge_features)
-        except:
+        except TypeError as e:
+            logger.debug(f"GAT1 failed with edge_attr, falling back to no edge features: {e}")
             # Fallback if edge_attr not supported
             x_att1 = self.gat1(x, edge_index)
         x_att1 = self.bn_gat1(x_att1)
@@ -2590,7 +2631,8 @@ class SuperEnhancedCrystalTcGNN(torch.nn.Module):
         
         try:
             x_att2 = self.gat2(x_att1, edge_index, edge_attr=edge_features)
-        except:
+        except TypeError as e:
+            logger.debug(f"GAT2 failed with edge_attr, falling back to no edge features: {e}")
             x_att2 = self.gat2(x_att1, edge_index)
         x_att2 = self.bn_gat2(x_att2)
         x_att2 = F.elu(x_att2)
